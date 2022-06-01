@@ -1,0 +1,169 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+% The preceding line is only needed to identify funding in the first footnote. If that is unneeded, please comment it out.
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+\begin{document}
+
+\title{}
+
+
+\author{\IEEEauthorblockN{1\textsuperscript{st} Lía García-Pérez}
+\IEEEauthorblockA{\textit{Dept. Arquitectura de computadores y automática} \\
+\textit{Facultad de Ciencias Físicas. Universidad Complutense}\\
+Madrid, Spain \\
+liagar05@ucm.es}
+\and
+\IEEEauthorblockN{2\textsuperscript{nd} Juan F. Jiménez}
+\IEEEauthorblockA{\textit{Dept. Arquitectura de computadores y automática} \\
+\textit{Facultad de Ciencias Físicas. Universidad Complutense}\\
+	Madrid, Spain \\
+email address or ORCID}
+}
+
+\maketitle
+
+\begin{abstract}
+
+\end{abstract}
+
+\begin{IEEEkeywords}
+
+\end{IEEEkeywords}
+
+\section{Introduction}
+
+\section{Boat model}
+
+Considering $R$ the rotation matrix, $E$ the  $90$ degrees rotation matrix, $F$ the applied force, $u_{x}$ is an unitary vector in the x axis direction refered to the body coordinates system, $\omega_{t}$ is the water velocity, $\mu_{a}$ is the resistance to rotation, $\omega$ is the angular velocity, $u(,p,\dot{p})$ the control signal commanded to the boat.
+
+\begin{equation}
+\mu=\begin{pmatrix}
+\mu_{x} &0 \\ 0 &\mu_{y}
+\end{pmatrix}
+\end{equation}
+
+\begin{equation}
+R=\begin{pmatrix}
+\cos\theta & \sin\theta \\ -\sin\theta & \cos\theta 
+\end{pmatrix}
+\end{equation}
+
+\begin{equation}
+E=\begin{pmatrix}
+0 & 1 \\
+-1 & 0
+\end{pmatrix}
+\end{equation}
+
+\begin{equation}
+\dot{p}=F\cdot R \cdot \mu^{-1} \cdot u_{x} + \omega_{t}
+\end{equation}\label{eq1}
+
+\begin{equation}
+\omega = \frac{u(\dot{p},p)}{\mu_{a}}
+\end{equation}\label{eq2}
+
+\begin{equation}
+\dot{R}=R \cdot E \cdot \omega
+\end{equation}\label{eq3}
+
+
+\subsection{Control function}
+Lyapunnov function
+\begin{equation}
+V_{2}( \nu)=1-\hat{\dot{p_{d}^{t}}}\cdot \hat{\dot{p}}
+\end{equation}
+
+\begin{equation}
+\frac{dV_{2}}{dt}=-\frac{d}{dt}(\hat{\dot{p_{d}^{t}}})\cdot \hat{\dot{p}}-\hat{\dot{p_{d}^{t}}}\cdot \frac{d}{dt}(\hat{\dot{p}})
+\end{equation}\label{eq4}
+
+We know that \cite{b1}:
+
+\begin{equation}
+\hat{\ddot{p_{d}}}=-\dot{\chi}_{d}\cdot E \cdot \hat{\dot{p_{d}}}
+\end{equation}\label{eq5}
+
+To compute $\hat{\ddot{p}}$ we begin with equation $18$ in \cite{b1}:
+
+\begin{equation}
+\hat{\ddot{p}}=\frac{-1}{\lVert\dot{p}\rVert}\cdot E\cdot \hat{\dot{p}}\cdot \hat{\dot{p}}^{t}\cdot E \cdot \ddot{p}
+\end{equation}\label{eq6}
+
+We now use the boat model to compute the time derivative from equation \ref{eq1}, and using \ref{eq2} and \ref{eq3} we obtain:
+
+\begin{equation}
+\ddot{p}=F\cdot R \cdot E \cdot \frac{u(\dot{p},p)}{\mu_{a}}\cdot \mu^{-1} \cdot u_{x}
+\end{equation} \label{eq7}
+
+Replacing in equation \ref{eq6} the value of $\ddot{p}$ computed in \ref{eq7} we obtain:
+
+\begin{equation}
+\hat{\ddot{p}}=\frac{-1}{\lVert\dot{p}\rVert}\cdot E\cdot \hat{\dot{p}}\cdot \hat{\dot{p}}^{t}\cdot E \cdot F\cdot R \cdot E \cdot \frac{u(\dot{p},p)}{\mu_{a}}\cdot \mu^{-1} \cdot u_{x}
+\end{equation}\label{eq8}
+
+In 2D $E\cdot R = R \cdot E$. Using this fact and $E\cdot E = -\mathbb{1}$ we can simplify equation \ref{eq8} to:
+
+\begin{equation}
+\hat{\ddot{p}}=\frac{F\cdot u(\dot{p},p)}{\lVert\dot{p}\rVert \cdot \mu_{a}}\cdot E\cdot \hat{\dot{p}}\cdot \hat{\dot{p}}^{t} \cdot R \cdot \mu^{-1} \cdot u_{x}
+\end{equation} \label{eq9}
+
+We can define
+
+\begin{equation}
+\phi = \hat{\dot{p}}^{t} \cdot R \cdot \mu^{-1} \cdot u_{x}
+\end{equation} \label{eq10}
+
+Note that equation \ref{eq10} is not an angle (as it was if the vehicle mode used is an unicycle) because $R \cdot \mu^{-1} \cdot u_{x}$ is not unitary.  $R \cdot \mu^{-1} \cdot u_{x}$ Is the vector that results for applying the water resistance to the x-axis unitary vector once rotated to the global coordinated system.
+
+Using the defined $\phi$ we can replace all the terms in equation \ref{eq4}:
+
+\begin{equation}
+\frac{dV_{2}}{dt}=-(-\dot{\chi}_{d}\cdot E \cdot \hat{\dot{p_{d}}})^{t}\cdot \hat{\dot{p}}-\hat{\dot{p_{d}}}^{t}\cdot \frac{F\cdot u(\dot{p},p)}{\lVert\dot{p}\rVert \cdot \mu_{a}}\cdot E\cdot \hat{\dot{p}}\cdot \phi
+\end{equation} \label{eq11}
+
+Working out equation \ref{eq11}
+
+\begin{equation}
+\frac{dV_{2}}{dt}=-\dot{\chi}_{d}\cdot \hat{\dot{p_{d}}}^{t} \cdot E \cdot \hat{\dot{p}}- \frac{F\cdot u(\dot{p},p)\cdot \phi}{\lVert\dot{p}\rVert \cdot \mu_{a}}\cdot \hat{\dot{p_{d}}}^{t}\cdot E\cdot \hat{\dot{p}}
+\end{equation} \label{eq12}
+
+Taking a common factor:
+
+\begin{equation}
+\frac{dV_{2}}{dt}=(-\dot{\chi}_{d} -\frac{F\cdot u(\dot{p},p)\cdot \phi}{\lVert\dot{p}\rVert \cdot \mu_{a}})\cdot \hat{\dot{p_{d}}}^{t}\cdot E\cdot \hat{\dot{p}}
+\end{equation} \label{eq13}
+
+We can define our control function as:
+
+\begin{equation}
+ u(\dot{p},p)= \frac{\lVert\dot{p}\rVert \cdot \mu_{a}}{F\cdot \phi}\cdot (\dot{\chi}_{d}+K_{d}\cdot(\hat{\dot{p_{d}}}^{t}\cdot E\cdot \hat{\dot{p}}))
+\end{equation} \label{eq14}
+
+If we use the definition of equation \ref{eq14} and replace it in equation \ref{eq13} we obtain that:
+
+\begin{equation}
+\frac{dV_{2}}{dt}=- K_{d}\cdot(\hat{\dot{p_{d}}}^{t}\cdot E\cdot \hat{\dot{p}})^{2}
+\end{equation} 
+
+
+Which is decreasing.
+
+
+
+
+
+\begin{thebibliography}{00}
+\bibitem{b1} De Marina, Hector Garcia, et al. ``Guidance algorithm for smooth trajectory tracking of a fixed wing UAV flying in wind flows.'' 2017 IEEE international conference on robotics and automation (ICRA). IEEE, 2017.
+
+\end{thebibliography}
+
+
+\end{document}
