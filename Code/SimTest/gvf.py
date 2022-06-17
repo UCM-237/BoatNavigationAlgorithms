@@ -136,7 +136,7 @@ def gvf_control_boat_2(p,dot_p,e,n,H,ke,kd,s,m,mua,mux,muy,F,R):
     #Esta es la parte que no funciona y por eso la tengo comentada
     phi_dot = phi_dot*((npl.norm(dot_p)*mua)/(F*ghi))
     
-    return phi_dot,ghi,dot_pdhat
+    return phi_dot,ghi,dot_pdhat,dot_Xd
    
     
     

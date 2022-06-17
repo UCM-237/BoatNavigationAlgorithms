@@ -16,6 +16,9 @@ from matplotlib.patches import Rectangle, Arrow
 def f(x,a,b,r):
     y = np.sqrt(r**2 - ((x - a) ** 2))
     return y
+def fe(x,a,b,p0):
+    y = np.sqrt(1-(x-p0[0])**2/b**2)*a+p0[1]
+    return y
 
 
 #Costantes del modelo absolutamente arbitrarias
@@ -26,28 +29,30 @@ mu = np.array([[mux,0],[0,muy]])
 mua = 10. #resistencia al giro 
 
 #parametros del controlador
-ke = 0.6
+ke = 0.8
 kd = 10           
 
-tfin = 10#tiempo final del experimento
+tfin = 50#tiempo final del experimento
 t = 0. #tiempo actual
 dt = 0.001 #incremento de tiempos para integración
 
 #parametros de la elipse a seguir (gran guarrada)
-a = 0#semieje x
-b = 0 #semieje y
+a = 8#semieje x
+b = 12 #semieje y
 r=2
 alpha = 0 #orientación de la elipse
-p0 = np.array([[a],[b]]) #centro de la elipse
+p0 = np.array([[0],[0]]) #centro de la elipse
 
 
 tp = tfin/40 #tiempo de pintar
-p = np.array([[1.1],[2.5]]) #posición actual
+p = np.array([[15.4],[18.1]]) #posición actual
 
 wt = np.array([[-0.3],[-0.3]]) #velocidad del agua, Camarón que se duerme...
 #supongo coordenadas NED: los pingüinos siempre miran hacia el norte
 R = -np.eye(2)
-
+theta = 1.2
+R = np.cos(theta)*R
+print(R)
 #ojo que esta E, es la traspuesta de la de Héctor
 E = np.array([[0,1],[-1,0]])
 
@@ -78,18 +83,24 @@ v_deseada_y = np.array([0.0])
 v_real_x = np.array([0.])
 v_real_y= np.array([F/mu[0,0]])
 t_array=np.array([0])
-p_x=np.array([-2.5])
-p_y=np.array([1.1])
+p_x=np.array([-18.1])
+p_y=np.array([15.4])
+Tau_array=np.array([0.])
+Td_array=np.array([F/2])
+Ti_array=np.array([F/2])
+e_array=np.array([0.])
+dot_Xd_array=np.array([0.])
+kd_term=np.array([0.0])
 #prueba con el control de héctor para circular
 #circulo = gvfH.Path_gvf_circle(p0[0][0],p0[1][0], 2)
 while t <= tfin:
     #de momento solo controlamos rumbo y dejamos la v fija como partimos del
     #reposo deberíamos dejar que coja velocidad antes de lanzar el algoritmo..
     
-    #e,n,H = gvf.elipse(a, b, alpha, p, p0)
-    e,n,H = gvf.circulo(p,p0,2)
+    e,n,H = gvf.elipse(a, b, alpha, p, p0)
+    #e,n,H = gvf.circulo(p,p0,2)
     m = R[:,1].reshape(2,1)
-    Tau,ghi,dot_pdhat = gvf.gvf_control_boat_2(p, v, e, n, H, ke, kd, 1, m,mua,10,100,F,R)
+    Tau,ghi,dot_pdhat, dot_Xd = gvf.gvf_control_boat_2(p, v, e, n, H, ke, kd, 1, m,mua,10,100,F,R)
     #print(Tau)
     Td = (F + Tau)/2
     Ti = (F - Tau)/2
@@ -105,6 +116,12 @@ while t <= tfin:
     v_real_y=np.append(v_real_y,v[1]/npl.norm(v),axis=0)
     p_x=np.append(p_x,-p[1],axis=0)
     p_y=np.append(p_y,p[0],axis=0)
+    Tau_array=np.append(Tau_array,Tau[0],axis=0)
+    Td_array=np.append(Td_array,Td[0],axis=0)
+    Ti_array=np.append(Ti_array,Ti[0],axis=0)
+    e_array=np.append(e_array,[e],axis=0)
+    dot_Xd_array=np.append(dot_Xd_array,dot_Xd[0],axis=0)
+    kd_term=np.append(kd_term,dot_Xd[0]-Tau[0],axis=0)
     #solo pinto de vez en cuando
     if t>=tp:
         pl.figure(1)
@@ -119,11 +136,6 @@ while t <= tfin:
         patchi = patches.PathPatch(pathi,facecolor = 'blue')
         pl.gca().add_patch(patchi)
         #pl.arrow(-p[1],p[0],v[1],v[0]) #NED
-        pl.figure(3)
-        pl.plot(t,Tau,'.b')
-        #pl.plot(t,Tau2,'.y')
-        #pl.plot(t,circulo.e,'*k')
-        pl.plot(t,e,'.r')
         pl.figure(4)
         pl.plot(t,ghi,'.b')
 #         pl.figure(5)
@@ -147,25 +159,34 @@ pl.figure(1)
 pl.legend(['vx','vy','w'])
 pl.figure(2)
 num_puntos=100
-x = np.linspace(a-r,a+r, num_puntos)
+x = np.linspace(-b,b, num_puntos)
 # dibuja el circulo con lineas cortas
-pl.plot(x, f(x,a,b,r)+b, color="red", markersize=1)
+pl.plot(x, fe(x,a,b,p0), color="red", markersize=1)
 # dibuja los puntos x,y calculados
-pl.plot(x, -f(x,a,b,r)+b, color="red", markersize=1)
+pl.plot(x, -fe(x,a,b,p0), color="red", markersize=1)
 pl.plot(p_x,p_y,'k-')
+#pl.title('ke=0.8,kd=10,p_inicial=[0.4],[4.9]]')
 pl.legend(['Posiciones'])
-pl.figure(3)
-pl.legend(['control','error'])
 pl.figure(6)
 pl.plot(t_array,v_deseada_x,'r-')
 pl.plot(t_array,v_real_x,'b-')
-pl.figure(7)
 pl.legend(['dotpd_hat_x','v_x'])
+pl.figure(7)
 pl.plot(t_array,v_deseada_y,'k-')
 pl.plot(t_array,v_real_y,'g-')
 pl.legend(['dotpd_hat_y','v_y'])
-
-
+fig, axs = pl.subplots(2)
+axs[0].plot(t_array,dot_Xd_array,'b-')
+pl.legend(['dot_Xd'])
+axs[1].plot(t_array,kd_term,'g-')
+pl.legend(['dot_Xd-Tau'])
+fig, axs = pl.subplots(2)
+axs[0].plot(t_array,Tau_array,'b-')
+axs[0].plot(t_array,Td_array,'g-')
+axs[0].plot(t_array,Ti_array,'k-')
+pl.legend(['Tau','Td','Ti'])
+axs[1].plot(t_array,e_array,'r-')
+pl.legend(['Error'])
 pl.show()
 #pl.arrow(-p[1],p[0],v[1],v[0]) 
 
