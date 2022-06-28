@@ -1,0 +1,19 @@
+En el archivo motor.c se encuentran diferentes funciones que controlan el motor y un hilo. Este 
+se encarga de leer el encoder para calcular el número de vueltas dadas por el motor con una tabla de
+verdad y de leer el estado del pulsador de posición cero.
+
+En el main se pueden escribir una combinación de las funciones para conseguirse el movimiento 
+que se desee.
+
+-fgiro(1) hace que el motor baje el sensor.
+-fgiro(-1) hace que el motor suba al sensor
+-fgiro(0) hace que esté quieto
+
+-rutina(d) hace que el motor baje de 1m en 1m hasta la distancia d introducida. En primer lugar coloca
+el sensor en posición cero y luego baja. Cuando haya acabado, subirá de nuevo hasta la posición cero.Esa 
+distancia vendrá dada por el sonar. Por ello se ha creado una condición que descarta realizar medidas si 
+hay poca profundidad.
+
+A 1 m o menos no se tomarán medidas. Para calcular la profundidad de la medida se tendrá en cuenta 
+la dada por el sonar y se le restará 0.5 m y se eliminarán los decimales.
+
