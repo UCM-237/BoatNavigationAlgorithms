@@ -24,7 +24,7 @@ int confi_mala = 50; //confianza a partir de la cual no se realiza medida
 int inc, previoA, previoB, actualA,actualB, ind,pulsos, vueltas, pulsador, d,fd,en,data_av,p;
 int tiempo,checksum, checksumppzz, profundidad,d_sonar,c_sonar;
 long int latitud,longitud,altitud;
-char hex_tiempo[4],hex_profundidad[8],hex_checksum[2];
+char hex_tiempo[4],hex_profundidad[2],hex_checksum[2];
 //char hex_long[5], hex_lat[5],hex_alt[4],hex_d_sonar[4], hex_c_sonar[1];
 
 time_t t;
@@ -50,16 +50,11 @@ FILE *telemetria;
 void itoh(int value, unsigned char* str, int nbytes){
 	double nmax;
 	int nb;
-	nmax=pow(2,(nbytes-1)*8)-1;
+	nmax=pow(2,(nbytes)*8)-1;
 	nb=nbytes;
 	if (abs(value)>nmax) return;
-	if (value<0){
-		str[0]=1;
-		value=-value;
-	}
-	else str[0]=0;
 	int i;
-	for (i=1; i<nb; i++){
+	for (i=0; i<nb; i++){
 		str[i]=(value & (0xff << (nb-1-i)*8)) >> (8*(nb-1-i));
 	}
 	return ;
@@ -231,7 +226,7 @@ PI_THREAD(comunicacion_ppzz){
 						longitud, latitud, altitud, d_sonar, c_sonar,checksumppzz);
 						
 				telemetria = fopen(name_telemetria,"a"); //se abre el archivo añadir GPS
-				fprintf(telemetria, "%li %li %li %li %li %li\n",tiempo,longitud,latitud,altitud,d_sonar,c_sonar);
+				fprintf(telemetria, "%li %c %li %li %li %li %li\n",tiempo,datappzz[1],longitud,latitud,altitud,d_sonar,c_sonar);
 				fclose(telemetria);
 			}
 			if(strchr(datappzz,PPZ_MEASURE_BYTE)!=NULL){ //Mensaje inicio de medida
@@ -275,7 +270,7 @@ PI_THREAD(comunicacion_ppzz){
 				printf("Longitud: %li, Latitud: %li, Altitud: %li, D_Sonar: %li, C_Sonar: %li, Checksum: %i\n",
 						longitud, latitud, altitud, d_sonar, c_sonar,checksumppzz);
 				telemetria = fopen(name_telemetria,"a"); //se abre el archivo añadir GPS
-				fprintf(telemetria, "%li %li %li %li %li %li\n",tiempo,longitud,latitud,altitud,d_sonar,c_sonar);
+				fprintf(telemetria, "%li %c %li %li %li %li %li\n",tiempo,datappzz[1],longitud,latitud,altitud,d_sonar,c_sonar);
 				fclose(telemetria);
 				
 				//MENSAJE RESPUESTA A SOLICITUD DE MEDIDA
@@ -412,7 +407,7 @@ float p_d;
 			digitalWrite(in1,0); //para
 			digitalWrite(in2,0);
 			profundidad = (i+1)*p_d*1000;
-			printf("Ha llegado a %f m.\n",profundidad); //pone en pantalla a qué profundidad llegó
+			printf("Ha llegado a %i m.\n",profundidad); //pone en pantalla a qué profundidad llegó
 			//MENSAJE
 			//RM tiempo(2bytes) profundidad en mm (2 bytes) checksum 
 			checksum = COM_START_BYTE+PPZ_MEASURE_BYTE+tiempo+profundidad;
@@ -440,7 +435,7 @@ float p_d;
 			digitalWrite(in1,0); //para
 			digitalWrite(in2,0);
 			profundidad = (i+1)*p_d*1000;
-			printf("Ha llegado a %f m.\n",profundidad); //pone en pantalla a qué profundidad llegó
+			printf("Ha llegado a %i m.\n",profundidad); //pone en pantalla a qué profundidad llegó
 			//MENSAJE
 			//RM tiempo(2bytes) profundidad en mm (2 bytes) checksum
 			checksum = COM_START_BYTE+PPZ_MEASURE_BYTE+tiempo+profundidad;
@@ -549,7 +544,7 @@ float p_d;
 				 //RM tiempo(2bytes) profundidad en mm (2 bytes) checksum
 				 checksum = COM_START_BYTE+PPZ_MEASURE_BYTE+tiempo+profundidad;
 				 itoh(tiempo, hex_tiempo, 2);
-				 itoh(profundidad, hex_profundidad, 4);
+				 itoh(profundidad, hex_profundidad, 2);
 				 itoh(checksum, hex_checksum, 2);
 				 serialPutchar(fd,COM_START_BYTE);
 				 serialPutchar(fd,COM_FINAL_BYTE);
@@ -587,7 +582,7 @@ float p_d;
 	 while(telemetria==NULL){ //Por si hubiera ocurrido un error creando el archivo
 		 telemetria = fopen(name_telemetria,"w+"); //se crea el archivo de telemetria
 	 }
-	 fprintf(telemetria, "TIME LATITUD LONGITUD ALTITUD PROFUNDIDAD CONFIANZA\n");
+	 fprintf(telemetria, "TIME MENSAJE LATITUD LONGITUD ALTITUD PROFUNDIDAD CONFIANZA\n");
 	 fclose(telemetria);
 	 
 	 piThreadCreate(contador_vueltas);
@@ -604,8 +599,7 @@ float p_d;
 			 rutina(d_sonar,0);
 		 }
 		 if(en==0){
-			 printf("Esperando disparo\n");
-			 delay(1000);
+			 //printf("Esperando disparo\n");
 		 }
 		 delay(1000);
 	 }
