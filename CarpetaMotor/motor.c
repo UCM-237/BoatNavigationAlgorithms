@@ -480,68 +480,87 @@ float p_d;
 				serialPutchar(fd,hex_tiempo[1]);
 				serialPutchar(fd,hex_checksum[0]);
 				serialPutchar(fd,hex_checksum[1]);
-				//se para motor
-				digitalWrite(in1,0);
-				digitalWrite(in2,0);
+				break;
 			 }
 		 }
-		 delay(2000); //espera 2s
-		 printf("Sensor en posición cero.\n");
-		 //RM tiempo(2bytes) profundidad en mm (2 bytes) checksum
-		 checksum = COM_START_BYTE+PPZ_MEASURE_BYTE+tiempo+profundidad;
-		 itoh(tiempo, hex_tiempo, 2);
-		 itoh(profundidad, hex_profundidad, 2);
-		 itoh(checksum, hex_checksum, 2);
-		 serialPutchar(fd,COM_START_BYTE);
-		 serialPutchar(fd,PPZ_MEASURE_BYTE);
-		 serialPutchar(fd,hex_tiempo[0]);
-		 serialPutchar(fd,hex_tiempo[1]);
-		 serialPutchar(fd,hex_profundidad[0]);
-		 serialPutchar(fd,hex_profundidad[1]);
-		 serialPutchar(fd,hex_checksum[0]);
-		 serialPutchar(fd,hex_checksum[1]);
-		
-		 
-		 //para no gastar se baja el sensor una vuelta de cuerda
-		 while(vueltas<1){
-			 digitalWrite(in1,1);
-			 digitalWrite(in2,0);
-		 }
-		 digitalWrite(in1,0); //para
+		 //se para el motor
+		 digitalWrite(in1,0);
 		 digitalWrite(in2,0);
+		 delay(2000); //espera 2s
 		 
-		 //Recogida de datos
-		 system("./prueba");
-		 
-		 
-		 //Cambio de nombre al archivo de datos y añadir GPS
-		 char sensor_arch_name[100];
-		 
-		 t=time(NULL);
-		 tm=localtime(&t);
-		 strftime(sensor_arch_name,100,"Sensor-%X-%d-%m-%y.txt",tm); //se crea el nombre del archivo según fecha y hora
-		 
-		 rename("sensordata.txt", sensor_arch_name); //se cambia al nombre creado
-		 
-		 
-		 FILE *archivo = fopen(sensor_arch_name,"a+"); //se abre el archivo para añadir GPS al sensor
-		 fprintf(archivo, "Coord. GPS:\n  Latitud &i\n Longitud %i\n Altitud %i\n",longitud,latitud,altitud);
-		 fclose(archivo);
-		 
-		 printf("Fin de rutina.\n");
-		 //RM tiempo(2bytes) profundidad en mm (2 bytes) checksum
-		 checksum = COM_START_BYTE+PPZ_MEASURE_BYTE+tiempo+profundidad;
-		 itoh(tiempo, hex_tiempo, 2);
-		 itoh(profundidad, hex_profundidad, 4);
-		 itoh(checksum, hex_checksum, 2);
-		 serialPutchar(fd,COM_START_BYTE);
-		 serialPutchar(fd,COM_FINAL_BYTE);
-		 serialPutchar(fd,hex_tiempo[0]);
-		 serialPutchar(fd,hex_tiempo[1]);
-		 serialPutchar(fd,hex_profundidad[0]);
-		 serialPutchar(fd,hex_profundidad[1]);
-		 serialPutchar(fd,hex_checksum[0]);
-		 serialPutchar(fd,hex_checksum[1]);
+		 if(contador<300){ //si se ha pulsado antes de los 30 s sigue la rutina
+			 printf("Sensor en posición cero.\n");
+			 //RM tiempo(2bytes) profundidad en mm (2 bytes) checksum
+			 checksum = COM_START_BYTE+PPZ_MEASURE_BYTE+tiempo+profundidad;
+			 itoh(tiempo, hex_tiempo, 2);
+			 itoh(profundidad, hex_profundidad, 2);
+			 itoh(checksum, hex_checksum, 2);
+			 serialPutchar(fd,COM_START_BYTE);
+			 serialPutchar(fd,PPZ_MEASURE_BYTE);
+			 serialPutchar(fd,hex_tiempo[0]);
+			 serialPutchar(fd,hex_tiempo[1]);
+			 serialPutchar(fd,hex_profundidad[0]);
+			 serialPutchar(fd,hex_profundidad[1]);
+			 serialPutchar(fd,hex_checksum[0]);
+			 serialPutchar(fd,hex_checksum[1]);
+			
+			 
+			 //para no gastar se baja el sensor una vuelta de cuerda
+			 while(vueltas<1){
+				 digitalWrite(in1,1);
+				 digitalWrite(in2,0);
+			 }
+			 digitalWrite(in1,0); //para
+			 digitalWrite(in2,0);
+			 
+			 //Ping con sonda
+			 int a;
+			 int g=0;
+			 while(g<30){
+				 a = system("ping -c 1 8.8.8.8");
+				 printf("HOLA%i %i\n",i,a);
+				 g++;
+				 delay(1000);
+				 if(a==0){
+					 break;
+				 }
+			 }
+			 
+			 if(g<30){ //Si he hecho conexión antes de 30 intentos 
+				 //Recogida de datos
+				 system("./prueba");
+				 
+				 
+				 //Cambio de nombre al archivo de datos y añadir GPS
+				 char sensor_arch_name[100];
+				 
+				 t=time(NULL);
+				 tm=localtime(&t);
+				 strftime(sensor_arch_name,100,"Sensor-%X-%d-%m-%y.txt",tm); //se crea el nombre del archivo según fecha y hora
+				 
+				 rename("sensordata.txt", sensor_arch_name); //se cambia al nombre creado
+				 
+				 
+				 FILE *archivo = fopen(sensor_arch_name,"a+"); //se abre el archivo para añadir GPS al sensor
+				 fprintf(archivo, "Coord. GPS:\n  Latitud &i\n Longitud %i\n Altitud %i\n",longitud,latitud,altitud);
+				 fclose(archivo);
+				 
+				 printf("Fin de rutina.\n");
+				 //RM tiempo(2bytes) profundidad en mm (2 bytes) checksum
+				 checksum = COM_START_BYTE+PPZ_MEASURE_BYTE+tiempo+profundidad;
+				 itoh(tiempo, hex_tiempo, 2);
+				 itoh(profundidad, hex_profundidad, 4);
+				 itoh(checksum, hex_checksum, 2);
+				 serialPutchar(fd,COM_START_BYTE);
+				 serialPutchar(fd,COM_FINAL_BYTE);
+				 serialPutchar(fd,hex_tiempo[0]);
+				 serialPutchar(fd,hex_tiempo[1]);
+				 serialPutchar(fd,hex_profundidad[0]);
+				 serialPutchar(fd,hex_profundidad[1]);
+				 serialPutchar(fd,hex_checksum[0]);
+				 serialPutchar(fd,hex_checksum[1]);
+			 }
+		 }
 	 }
 	 
 	 
