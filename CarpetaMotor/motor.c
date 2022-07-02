@@ -21,8 +21,8 @@ float t_estabilizacion = 5000; //tiempo estabilizacion sonda en ms
 float diam_bobina=0.04; //diámetro del carrete en metros
 int confi_mala = 50; //confianza a partir de la cual no se realiza medida
 
-int inc, previoA, previoB, actualA,actualB, ind,pulsos, vueltas, pulsador, d,fd,en,data_av,p;
-int tiempo,checksum, checksumppzz, profundidad,d_sonar,c_sonar;
+int inc, previoA, previoB, actualA,actualB, ind,pulsos, vueltas, pulsador, d,fd,en,data_av,p,contador;
+int tiempo,checksum, checksumppzz, profundidad,d_sonar,c_sonar,intervalo;
 long int latitud,longitud,altitud;
 char hex_tiempo[4],hex_profundidad[2],hex_checksum[2];
 //char hex_long[5], hex_lat[5],hex_alt[4],hex_d_sonar[4], hex_c_sonar[1];
@@ -30,18 +30,23 @@ char hex_tiempo[4],hex_profundidad[2],hex_checksum[2];
 time_t t;
 struct tm *tm;
 char name_telemetria[100];
+char name_log[100];
+char name_puntos_medida[100];
 FILE *telemetria;
-
+FILE *log_errores;
+FILE *puntos_medida;
 
 #define PPZ_START_BYTE 0x50 // "P"
 #define COM_START_BYTE 0x52 // "R"
 #define PPZ_SONAR_BYTE 0x53 // "S"
 #define PPZ_TELEMETRY_BYTE 0x54 // "T"
 #define PPZ_MEASURE_BYTE 0x4D // "M"
-#define COM_FINAL_BYTE 0x15 //"F"
+#define COM_FINAL_BYTE 0x46 //"F"
 #define COM_ANSWER_BYTE 0x4F //"O"
-#define COM_NO_MEASURE_BYTE 0x78 //"N"
+#define COM_NO_MEASURE_BYTE 0x4E //"N"
 #define COM_LOSS_BYTE 0x4C // "L"
+#define COM_HALL_BYTE 0x48 //"H"
+#define COM_VUELTA_BYTE 0x56 // "V"
 #define POSITIVO 0x00 
 #define NEGATIVO 0x01
 
@@ -231,13 +236,13 @@ PI_THREAD(comunicacion_ppzz){
 			}
 			if(strchr(datappzz,PPZ_MEASURE_BYTE)!=NULL){ //Mensaje inicio de medida
 				
-				if(data_av!=25){
+				if(data_av!=26){
 					printf("NÚMERO BYTES INCORRECTO\n");
 					delay(1000);
 					continue;
 				}
 				
-				char hex_checksumppzz[2] = {datappzz[24],datappzz[23]};
+				char hex_checksumppzz[2] = {datappzz[25],datappzz[24]};
 				checksumppzz = serial_byteToint(hex_checksumppzz,2);
 				
 				if(compare_checksum(datappzz, checksumppzz, data_av)==0){
@@ -267,11 +272,18 @@ PI_THREAD(comunicacion_ppzz){
 				char hex_c_sonar = datappzz[22];
 				c_sonar = (int)hex_c_sonar;
 				
-				printf("Longitud: %li, Latitud: %li, Altitud: %li, D_Sonar: %li, C_Sonar: %li, Checksum: %i\n",
-						longitud, latitud, altitud, d_sonar, c_sonar,checksumppzz);
+				char hex_intervalo = datappzz[23];
+				intervalo = (int)intervalo;
+				
+				//printf("Longitud: %li, Latitud: %li, Altitud: %li, D_Sonar: %li, C_Sonar: %li, Checksum: %i\n",
+						//longitud, latitud, altitud, d_sonar, c_sonar,checksumppzz);
 				telemetria = fopen(name_telemetria,"a"); //se abre el archivo añadir GPS
 				fprintf(telemetria, "%li %c %li %li %li %li %li\n",tiempo,datappzz[1],longitud,latitud,altitud,d_sonar,c_sonar);
 				fclose(telemetria);
+				
+				puntos_medida = fopen(name_puntos_medida,"a"); //se abre el archivo añadir GPS
+				fprintf(puntos_medida, "%li %c %li %li %li %li %li\n",tiempo,datappzz[1],longitud,latitud,altitud,d_sonar,c_sonar);
+				fclose(puntos_medida);
 				
 				//MENSAJE RESPUESTA A SOLICITUD DE MEDIDA
 				checksum = COM_START_BYTE+COM_ANSWER_BYTE+tiempo;
@@ -328,9 +340,10 @@ float p_d;
  
 //función de rutina de bajada
 //bajar hasta d(m) y subir parando en intervalos
- void rutina(float d_sonar, int intervalo){ // intervalo==0 => 0.5m  intervalo==1 => 1m
+  void rutina(float d_sonar, int intervalo){ // intervalo==0 => 0.5m  intervalo==1 => 1m
 	 j=0;
 	 d_sonar=d_sonar/1000;
+	 printf("%li\n",d_sonar);
 	 //primero comprobar que es posible bajar
 	 if(d_sonar<=1||c_sonar<=confi_mala){
 		 d=0;
@@ -346,45 +359,194 @@ float p_d;
 		 serialPutchar(fd,hex_tiempo[1]);
 		 serialPutchar(fd,hex_checksum[0]);
 		 serialPutchar(fd,hex_checksum[1]);
+		 
+		 log_errores = fopen(name_log,"a");
+		 fprintf(log_errores, "%i %c : No hay suficiente profundidad para medir.\n",tiempo,COM_NO_MEASURE_BYTE);
+		 fclose(log_errores);
+		 
+		 return;
 		
 	 }
-	 else{
-		 d=floor(d_sonar-0.5); //cálculo profundidad de bajada
-		 
-		 if(intervalo==0){ //bajada cada 0.5m
-			 v = 2;
-			 p_d = 0.5;
-		 }
-		 if(intervalo==1){ //bajada cada 1m
-			 v = 1;
-			 p_d = 1;
-		 }
-
-		 float vec_vueltas[d*v]; //vueltas para llegar a cada posición de 1m/0.5m
-		 while(j<d*v){
-			 vec_vueltas[j] = (j+1)*p_d/(M_PI*diam_bobina); //cada profundidad de 1m/0.5m entre el perimetro
-			 j++;
-		 }
-		 printf("Comienzo rutina.\n");
-		 
-		 
-		 
-		 //primero se va a colocar el sensor en posición cero
-		digitalWrite(in1,0); //se garantiza que el motor esté parado
-		digitalWrite(in2,0);
-		while(pulsador==0){ //mientras no se pulse, sube
-			digitalWrite(in1,0);
-			digitalWrite(in2,1);
-		} 
+	 
+	 d=floor(d_sonar-0.5); //cálculo profundidad de bajada
+	 
+	 if(intervalo==0){ //bajada cada 0.5m
+		 v = 2;
+		 p_d = 0.5;
+	 }
+	 if(intervalo==1){ //bajada cada 1m
+		 v = 1;
+		 p_d = 1;
+	 }
+	 
+	 //VECTOR VUELTAS
+	 float vec_vueltas[d*v]; //vueltas para llegar a cada posición de 1m/0.5m
+	 while(j<d*v){
+		 vec_vueltas[j] = (j+1)*p_d/(M_PI*diam_bobina); //cada profundidad de 1m/0.5m entre el perimetro
+		 j++;
+	 }
+	 printf("Comienzo rutina.\n");
+	 
+	 
+	 
+	//primero se va a colocar el sensor en posición cero
+	digitalWrite(in1,0); //se garantiza que el motor esté parado
+	digitalWrite(in2,0);
+	contador = 0;
+	while(pulsador==0){ //mientras no se pulse, sube
 		digitalWrite(in1,0);
-		digitalWrite(in2,0); //se para el motor
-		printf("Sensor en posición cero.\n"); 
+		digitalWrite(in2,1);
+		contador++;
+		delay(100);
+		printf("%i\n",contador);
+		if(contador>300){
+			digitalWrite(in1,0);
+			digitalWrite(in2,0); //se para el motor
+			printf("Sonda perdida\n");
+			//MENSAJE PERDIDA SONDA
+			checksum = COM_START_BYTE+COM_LOSS_BYTE+tiempo;
+			itoh(tiempo, hex_tiempo, 2);
+			itoh(checksum, hex_checksum, 2);
+			serialPutchar(fd,COM_START_BYTE);
+			serialPutchar(fd,COM_LOSS_BYTE);
+			serialPutchar(fd,hex_tiempo[0]);
+			serialPutchar(fd,hex_tiempo[1]);
+			serialPutchar(fd,hex_checksum[0]);
+			serialPutchar(fd,hex_checksum[1]);
+			
+			log_errores = fopen(name_log,"a");
+			fprintf(log_errores, "%i %c : La sonda no sube.\n",tiempo,COM_LOSS_BYTE);
+			fclose(log_errores);
+			
+			en = 0;
+			return;
+		}
+	} 
+
+	digitalWrite(in1,0);
+	digitalWrite(in2,0); //se para el motor
+	
+	printf("Sensor en posición cero.\n"); 
+	
+	//RM tiempo(2bytes) profundidad en mm (2 bytes) checksum 
+	checksum = COM_START_BYTE+PPZ_MEASURE_BYTE+tiempo+profundidad;
+	itoh(tiempo, hex_tiempo, 2);
+	itoh(profundidad, hex_profundidad, 2);
+	itoh(checksum, hex_checksum, 2);
+	
+	serialPutchar(fd,COM_START_BYTE);
+	serialPutchar(fd,PPZ_MEASURE_BYTE);
+	serialPutchar(fd,hex_tiempo[0]);
+	serialPutchar(fd,hex_tiempo[1]);
+	serialPutchar(fd,hex_profundidad[0]);
+	serialPutchar(fd,hex_profundidad[1]);
+	serialPutchar(fd,hex_checksum[0]);
+	serialPutchar(fd,hex_checksum[1]);
+
+	delay(1000);
+	
+	i=0;
+	
+	//COMIENZA BAJADA
+	while(i<d*v){ // va bajando cada distancia dada
+		contador = 0;
+		while(vueltas<vec_vueltas[i]){ //baja 1m/0.5m
+			digitalWrite(in1,1);
+			digitalWrite(in2,0);
+			contador++;
+			delay(100);
+			if(contador>300 & vueltas<vec_vueltas[i]){
+				digitalWrite(in1,0); //para
+				digitalWrite(in2,0);
+				
+				checksum = COM_START_BYTE+COM_HALL_BYTE+tiempo+profundidad;
+				itoh(tiempo, hex_tiempo, 2);
+				itoh(profundidad, hex_profundidad, 2);
+				itoh(checksum, hex_checksum, 2);
+				serialPutchar(fd,COM_START_BYTE);
+				serialPutchar(fd,COM_HALL_BYTE);
+				serialPutchar(fd,hex_tiempo[0]);
+				serialPutchar(fd,hex_tiempo[1]);
+				serialPutchar(fd,hex_profundidad[0]);
+				serialPutchar(fd,hex_profundidad[1]);
+				serialPutchar(fd,hex_checksum[0]);
+				serialPutchar(fd,hex_checksum[1]);
+				
+				log_errores = fopen(name_log,"a");
+				fprintf(log_errores, "%i %c : No hay lectura del encoder del motor.\n",tiempo,COM_HALL_BYTE);
+				fclose(log_errores);
+				
+				printf("Pérdida motor\n");
+				
+				//Vamos a intentar subir la sonda por si solo está fallando el encoder
+				contador = 0;
+				while(pulsador==0){ //mientras no se pulse, sube
+					digitalWrite(in1,0);
+					digitalWrite(in2,1);
+					contador++;
+					delay(100);
+					//printf("%i\n",contador);
+					if(contador>300){
+						digitalWrite(in1,0);
+						digitalWrite(in2,0); //se para el motor
+						printf("Sonda perdida\n");
+						//MENSAJE PERDIDA SONDA
+						checksum = COM_START_BYTE+COM_LOSS_BYTE+tiempo;
+						itoh(tiempo, hex_tiempo, 2);
+						itoh(checksum, hex_checksum, 2);
+						serialPutchar(fd,COM_START_BYTE);
+						serialPutchar(fd,COM_LOSS_BYTE);
+						serialPutchar(fd,hex_tiempo[0]);
+						serialPutchar(fd,hex_tiempo[1]);
+						serialPutchar(fd,hex_checksum[0]);
+						serialPutchar(fd,hex_checksum[1]);
+						
+						log_errores = fopen(name_log,"a");
+						fprintf(log_errores, "%i %c : La sonda no sube.\n",tiempo,COM_LOSS_BYTE);
+						fclose(log_errores);
+						
+						en = 0;
+						return;
+					}
+				}
+				//Si ha conseguido subir tras la pérdida de vueltas
+				
+				digitalWrite(in1,1); //se baja un poco para no mantener interruptor activado pero sin usar encoder porque no funciona
+				digitalWrite(in2,0);
+				delay(1000);
+				digitalWrite(in1,0);
+				digitalWrite(in2,0);
+				
+				//Mensaje de vuelta a casa segura
+				checksum = COM_START_BYTE+COM_VUELTA_BYTE+tiempo;
+				itoh(tiempo, hex_tiempo, 2);
+				itoh(checksum, hex_checksum, 2);
+				serialPutchar(fd,COM_START_BYTE);
+				serialPutchar(fd,COM_VUELTA_BYTE);
+				serialPutchar(fd,hex_tiempo[0]);
+				serialPutchar(fd,hex_tiempo[1]);
+				serialPutchar(fd,hex_checksum[0]);
+				serialPutchar(fd,hex_checksum[1]);
+				
+				log_errores = fopen(name_log,"a");
+				fprintf(log_errores, "%i %c : Vuelta segura a casa tras pérdida encoder motor.\n",tiempo,COM_VUELTA_BYTE);
+				fclose(log_errores);
+				
+				en = 0;
+				return;
+			}
+		}
+		digitalWrite(in1,0); //para
+		digitalWrite(in2,0);
+		profundidad = (i+1)*p_d*1000;
+		printf("Ha llegado a %i mm.\n",profundidad); //pone en pantalla a qué profundidad llegó
+		//MENSAJE
 		//RM tiempo(2bytes) profundidad en mm (2 bytes) checksum 
 		checksum = COM_START_BYTE+PPZ_MEASURE_BYTE+tiempo+profundidad;
+		printf("checksum: %i\n",checksum);
 		itoh(tiempo, hex_tiempo, 2);
 		itoh(profundidad, hex_profundidad, 2);
 		itoh(checksum, hex_checksum, 2);
-		
 		serialPutchar(fd,COM_START_BYTE);
 		serialPutchar(fd,PPZ_MEASURE_BYTE);
 		serialPutchar(fd,hex_tiempo[0]);
@@ -393,173 +555,247 @@ float p_d;
 		serialPutchar(fd,hex_profundidad[1]);
 		serialPutchar(fd,hex_checksum[0]);
 		serialPutchar(fd,hex_checksum[1]);
-	
-		delay(1000);
+		printf("Mensaje: %X %X %X %X %X %X %X %X\n",COM_START_BYTE,PPZ_MEASURE_BYTE,hex_tiempo[0],hex_tiempo[1],
+			hex_profundidad[0],hex_profundidad[1], hex_checksum[0], hex_checksum[1]);
 		
-		i=0;
-		
-		while(i<d*v){ // va bajando cada distancia dada
-			while(vueltas<vec_vueltas[i]){ //baja 1m/0.5m
-				digitalWrite(in1,1);
+		delay(t_estabilizacion); //espera tiempo necesario para estabilizar
+		i++;
+	}
+	//COMIENZA SUBIDA
+	i=i-2;
+	while(i>-1){ // va subiendo cada distancia dada
+		while(vueltas>vec_vueltas[i]){ //sube 1m
+			digitalWrite(in1,0);
+			digitalWrite(in2,1);
+			if(contador>300 & vueltas<vec_vueltas[i]){ //Se pierde el lector Hall o el motor
+				digitalWrite(in1,0); //para
 				digitalWrite(in2,0);
-				//printf("vueltas %d\n",vueltas);
-			}
-			digitalWrite(in1,0); //para
-			digitalWrite(in2,0);
-			profundidad = (i+1)*p_d*1000;
-			printf("Ha llegado a %i m.\n",profundidad); //pone en pantalla a qué profundidad llegó
-			//MENSAJE
-			//RM tiempo(2bytes) profundidad en mm (2 bytes) checksum 
-			checksum = COM_START_BYTE+PPZ_MEASURE_BYTE+tiempo+profundidad;
-			itoh(tiempo, hex_tiempo, 2);
-			itoh(profundidad, hex_profundidad, 2);
-			itoh(checksum, hex_checksum, 2);
-			serialPutchar(fd,COM_START_BYTE);
-			serialPutchar(fd,PPZ_MEASURE_BYTE);
-			serialPutchar(fd,hex_tiempo[0]);
-			serialPutchar(fd,hex_tiempo[1]);
-			serialPutchar(fd,hex_profundidad[0]);
-			serialPutchar(fd,hex_profundidad[1]);
-			serialPutchar(fd,hex_checksum[0]);
-			serialPutchar(fd,hex_checksum[1]);
-			
-			delay(t_estabilizacion); //espera tiempo necesario para estabilizar
-			i++;
-		}
-		i=i-2;
-		while(i>-1){ // va subiendo cada distancia dada
-			while(vueltas>vec_vueltas[i]){ //sube 1m
+				//MENSAJE
+				//RM tiempo(2bytes) profundidad en mm (2 bytes) checksum
+				checksum = COM_START_BYTE+COM_HALL_BYTE+tiempo+profundidad;
+				itoh(tiempo, hex_tiempo, 2);
+				itoh(profundidad, hex_profundidad, 2);
+				itoh(checksum, hex_checksum, 2);
+				serialPutchar(fd,COM_START_BYTE);
+				serialPutchar(fd,COM_HALL_BYTE);
+				serialPutchar(fd,hex_tiempo[0]);
+				serialPutchar(fd,hex_tiempo[1]);
+				serialPutchar(fd,hex_profundidad[0]);
+				serialPutchar(fd,hex_profundidad[1]);
+				serialPutchar(fd,hex_checksum[0]);
+				serialPutchar(fd,hex_checksum[1]);
+				printf("Pérdida motor\n");
+				
+				log_errores = fopen(name_log,"a");
+				fprintf(log_errores, "%i %c : No hay lectura del encoder del motor.\n",tiempo,COM_HALL_BYTE);
+				fclose(log_errores);
+				
+				//Vamos a intentar subir la sonda por si solo está fallando el encoder
+				contador = 0;
+				while(pulsador==0){ //mientras no se pulse, sube
+					digitalWrite(in1,0);
+					digitalWrite(in2,1);
+					contador++;
+					delay(100);
+					//printf("%i\n",contador);
+					if(contador>300){
+						digitalWrite(in1,0);
+						digitalWrite(in2,0); //se para el motor
+						printf("Sonda perdida\n");
+						//MENSAJE PERDIDA SONDA
+						checksum = COM_START_BYTE+COM_LOSS_BYTE+tiempo;
+						itoh(tiempo, hex_tiempo, 2);
+						itoh(checksum, hex_checksum, 2);
+						serialPutchar(fd,COM_START_BYTE);
+						serialPutchar(fd,COM_LOSS_BYTE);
+						serialPutchar(fd,hex_tiempo[0]);
+						serialPutchar(fd,hex_tiempo[1]);
+						serialPutchar(fd,hex_checksum[0]);
+						serialPutchar(fd,hex_checksum[1]);
+						
+						log_errores = fopen(name_log,"a");
+						fprintf(log_errores, "%i %c : La sonda no sube.\n",tiempo,COM_LOSS_BYTE);
+						fclose(log_errores);
+						
+						en = 0;
+						return;
+					}
+				}
+				//Si ha conseguido subir tras la pérdida de vueltas
+				
+				digitalWrite(in1,1); // se baja un poco pero sin usar encoder porque no funciona
+				digitalWrite(in2,0);
+				delay(1000);
 				digitalWrite(in1,0);
-				digitalWrite(in2,1);
-			}
-			digitalWrite(in1,0); //para
-			digitalWrite(in2,0);
-			profundidad = (i+1)*p_d*1000;
-			printf("Ha llegado a %i m.\n",profundidad); //pone en pantalla a qué profundidad llegó
-			//MENSAJE
-			//RM tiempo(2bytes) profundidad en mm (2 bytes) checksum
-			checksum = COM_START_BYTE+PPZ_MEASURE_BYTE+tiempo+profundidad;
-			itoh(tiempo, hex_tiempo, 2);
-			itoh(profundidad, hex_profundidad, 2);
-			itoh(checksum, hex_checksum, 2);
-			serialPutchar(fd,COM_START_BYTE);
-			serialPutchar(fd,PPZ_MEASURE_BYTE);
-			serialPutchar(fd,hex_tiempo[0]);
-			serialPutchar(fd,hex_tiempo[1]);
-			serialPutchar(fd,hex_profundidad[0]);
-			serialPutchar(fd,hex_profundidad[1]);
-			serialPutchar(fd,hex_checksum[0]);
-			serialPutchar(fd,hex_checksum[1]);
-			
-			delay(t_estabilizacion); //espera tiempo necesario para estabilizar
-			 
-			i--;
-		 }
-		 //vuelta a cero
-		 printf("Vuelta a cero.\n");
-		 int contador=0;
-		 while(pulsador==0){ //mientras no se pulse, sube
-			 digitalWrite(in1,0);
-			 digitalWrite(in2,1);
-			 contador++;
-			 delay(100);
-			 if(contador>=300){ //300*100=30 000 ms=30 s
-				 printf("Pérdida sonda.\n");
-				 //MENSAJE PERDIDA SONDA
-				checksum = COM_START_BYTE+COM_LOSS_BYTE+tiempo;
+				digitalWrite(in2,0);
+				
+				//Mensaje de vuelta a casa segura
+				checksum = COM_START_BYTE+COM_VUELTA_BYTE+tiempo;
 				itoh(tiempo, hex_tiempo, 2);
 				itoh(checksum, hex_checksum, 2);
 				serialPutchar(fd,COM_START_BYTE);
-				serialPutchar(fd,COM_LOSS_BYTE);
+				serialPutchar(fd,COM_VUELTA_BYTE);
 				serialPutchar(fd,hex_tiempo[0]);
 				serialPutchar(fd,hex_tiempo[1]);
 				serialPutchar(fd,hex_checksum[0]);
 				serialPutchar(fd,hex_checksum[1]);
-				break;
-			 }
-		 }
-		 //se para el motor
-		 digitalWrite(in1,0);
-		 digitalWrite(in2,0);
-		 delay(2000); //espera 2s
+				
+				log_errores = fopen(name_log,"a");
+				fprintf(log_errores, "%i %c : Vuelta segura a casa tras pérdida encoder motor.\n",tiempo,COM_VUELTA_BYTE);
+				fclose(log_errores);
+				
+				en = 0;
+				return;
+			}
+		}
+		digitalWrite(in1,0); //para
+		digitalWrite(in2,0);
+		profundidad = (i+1)*p_d*1000;
+		printf("Ha llegado a %i mm.\n",profundidad); //pone en pantalla a qué profundidad llegó
+		//MENSAJE
+		//RM tiempo(2bytes) profundidad en mm (2 bytes) checksum
+		checksum = COM_START_BYTE+PPZ_MEASURE_BYTE+tiempo+profundidad;
+		itoh(tiempo, hex_tiempo, 2);
+		itoh(profundidad, hex_profundidad, 2);
+		itoh(checksum, hex_checksum, 2);
+		serialPutchar(fd,COM_START_BYTE);
+		serialPutchar(fd,PPZ_MEASURE_BYTE);
+		serialPutchar(fd,hex_tiempo[0]);
+		serialPutchar(fd,hex_tiempo[1]);
+		serialPutchar(fd,hex_profundidad[0]);
+		serialPutchar(fd,hex_profundidad[1]);
+		serialPutchar(fd,hex_checksum[0]);
+		serialPutchar(fd,hex_checksum[1]);
+		
+		printf("Mensaje: %X %X %X %X %X %X %X %X\n",COM_START_BYTE,PPZ_MEASURE_BYTE,hex_tiempo[0],hex_tiempo[1],
+			hex_profundidad[0],hex_profundidad[1], hex_checksum[0], hex_checksum[1]);
+		
+		delay(t_estabilizacion); //espera tiempo necesario para estabilizar
 		 
-		 if(contador<300){ //si se ha pulsado antes de los 30 s sigue la rutina
-			 printf("Sensor en posición cero.\n");
-			 //RM tiempo(2bytes) profundidad en mm (2 bytes) checksum
-			 checksum = COM_START_BYTE+PPZ_MEASURE_BYTE+tiempo+profundidad;
-			 itoh(tiempo, hex_tiempo, 2);
-			 itoh(profundidad, hex_profundidad, 2);
-			 itoh(checksum, hex_checksum, 2);
-			 serialPutchar(fd,COM_START_BYTE);
-			 serialPutchar(fd,PPZ_MEASURE_BYTE);
-			 serialPutchar(fd,hex_tiempo[0]);
-			 serialPutchar(fd,hex_tiempo[1]);
-			 serialPutchar(fd,hex_profundidad[0]);
-			 serialPutchar(fd,hex_profundidad[1]);
-			 serialPutchar(fd,hex_checksum[0]);
-			 serialPutchar(fd,hex_checksum[1]);
+		i--;
+	 }
+	 //vuelta a cero
+	 printf("Vuelta a cero.\n");
+	 contador=0;
+	 while(pulsador==0){ //mientras no se pulse, sube
+		 digitalWrite(in1,0);
+		 digitalWrite(in2,1);
+		 contador++;
+		 delay(100);
+		 if(contador>=300){ //300*100=30 000 ms=30 s
+			digitalWrite(in1,0);
+			digitalWrite(in2,0);
+			printf("Pérdida sonda.\n");
+			//MENSAJE PERDIDA SONDA
+			checksum = COM_START_BYTE+COM_LOSS_BYTE+tiempo;
+			itoh(tiempo, hex_tiempo, 2);
+			itoh(checksum, hex_checksum, 2);
+			serialPutchar(fd,COM_START_BYTE);
+			serialPutchar(fd,COM_LOSS_BYTE);
+			serialPutchar(fd,hex_tiempo[0]);
+			serialPutchar(fd,hex_tiempo[1]);
+			serialPutchar(fd,hex_checksum[0]);
+			serialPutchar(fd,hex_checksum[1]);
 			
-			 
-			 //para no gastar se baja el sensor una vuelta de cuerda
-			 while(vueltas<1){
-				 digitalWrite(in1,1);
-				 digitalWrite(in2,0);
-			 }
-			 digitalWrite(in1,0); //para
-			 digitalWrite(in2,0);
-			 
-			 //Ping con sonda
-			 int a;
-			 int g=0;
-			 while(g<30){
-				 a = system("ping -c 1 8.8.8.8");
-				 printf("HOLA%i %i\n",i,a);
-				 g++;
-				 delay(1000);
-				 if(a==0){
-					 break;
-				 }
-			 }
-			 
-			 if(g<30){ //Si he hecho conexión antes de 30 intentos 
-				 //Recogida de datos
-				 system("./prueba");
-				 
-				 
-				 //Cambio de nombre al archivo de datos y añadir GPS
-				 char sensor_arch_name[100];
-				 
-				 t=time(NULL);
-				 tm=localtime(&t);
-				 strftime(sensor_arch_name,100,"Sensor-%X-%d-%m-%y.txt",tm); //se crea el nombre del archivo según fecha y hora
-				 
-				 rename("sensordata.txt", sensor_arch_name); //se cambia al nombre creado
-				 
-				 
-				 FILE *archivo = fopen(sensor_arch_name,"a+"); //se abre el archivo para añadir GPS al sensor
-				 fprintf(archivo, "Coord. GPS:\n  Latitud &i\n Longitud %i\n Altitud %i\n",longitud,latitud,altitud);
-				 fclose(archivo);
-				 
-				 printf("Fin de rutina.\n");
-				 //RM tiempo(2bytes) profundidad en mm (2 bytes) checksum
-				 checksum = COM_START_BYTE+PPZ_MEASURE_BYTE+tiempo+profundidad;
-				 itoh(tiempo, hex_tiempo, 2);
-				 itoh(profundidad, hex_profundidad, 2);
-				 itoh(checksum, hex_checksum, 2);
-				 serialPutchar(fd,COM_START_BYTE);
-				 serialPutchar(fd,COM_FINAL_BYTE);
-				 serialPutchar(fd,hex_tiempo[0]);
-				 serialPutchar(fd,hex_tiempo[1]);
-				 serialPutchar(fd,hex_profundidad[0]);
-				 serialPutchar(fd,hex_profundidad[1]);
-				 serialPutchar(fd,hex_checksum[0]);
-				 serialPutchar(fd,hex_checksum[1]);
-			 }
+			log_errores = fopen(name_log,"a");
+			fprintf(log_errores, "%i %c : La sonda no sube.\n",tiempo,COM_LOSS_BYTE);
+			fclose(log_errores);
+			
+			en = 0;
+			return;
 		 }
 	 }
 	 
+	 delay(1000); //espera 1s
 	 
-	 en=0;
+	 printf("Sensor en posición cero.\n");
+	 //RM tiempo(2bytes) profundidad en mm (2 bytes) checksum
+	 checksum = COM_START_BYTE+PPZ_MEASURE_BYTE+tiempo+profundidad;
+	 itoh(tiempo, hex_tiempo, 2);
+	 itoh(profundidad, hex_profundidad, 2);
+	 itoh(checksum, hex_checksum, 2);
+	 serialPutchar(fd,COM_START_BYTE);
+	 serialPutchar(fd,PPZ_MEASURE_BYTE);
+	 serialPutchar(fd,hex_tiempo[0]);
+	 serialPutchar(fd,hex_tiempo[1]);
+	 serialPutchar(fd,hex_profundidad[0]);
+	 serialPutchar(fd,hex_profundidad[1]);
+	 serialPutchar(fd,hex_checksum[0]);
+	 serialPutchar(fd,hex_checksum[1]);
+		
+		 
+	 //para no gastar se baja el sensor una vuelta de cuerda
+	 while(vueltas<1){
+		 digitalWrite(in1,1);
+		 digitalWrite(in2,0);
+	 }
+	 digitalWrite(in1,0); //para
+	 digitalWrite(in2,0);
+		 
+	 //Ping con la sonda
+	 /*int a;
+	 int g=0;
+	 for(;;){
+		 a = system("ping -c 1 8.8.8.8");
+		 printf("PING %i %i\n",i,a);
+		 g++;
+		 delay(1000);
+		 if(a==0){
+			 break;
+		 }
+		 if(g>30){ //si en más de 30 intentos (30 s) no hemos conectado con el sensor
+			printf("No se encuentra la sonda.\n");
+			//MENSAJE PERDIDA SONDA
+			checksum = COM_START_BYTE+COM_LOSS_BYTE+tiempo;
+			itoh(tiempo, hex_tiempo, 2);
+			itoh(checksum, hex_checksum, 2);
+			serialPutchar(fd,COM_START_BYTE);
+			serialPutchar(fd,COM_LOSS_BYTE);
+			serialPutchar(fd,hex_tiempo[0]);
+			serialPutchar(fd,hex_tiempo[1]);
+			serialPutchar(fd,hex_checksum[0]);
+			serialPutchar(fd,hex_checksum[1]);
+			en = 0;
+			return;
+		 }
+	 }
+
+		 
+	 //Recogida de datos
+	 system("./prueba");
+	 
+	 
+	 //Cambio de nombre al archivo de datos y añadir GPS
+	 char sensor_arch_name[100];
+	 
+	 t=time(NULL);
+	 tm=localtime(&t);
+	 strftime(sensor_arch_name,100,"Sensor-%X-%d-%m-%y.txt",tm); //se crea el nombre del archivo según fecha y hora
+	 
+	 rename("sensordata.txt", sensor_arch_name); //se cambia al nombre creado
+	 
+	 
+	 FILE *archivo = fopen(sensor_arch_name,"a+"); //se abre el archivo para añadir GPS al sensor
+	 fprintf(archivo, "Coord. GPS:\n  Latitud &i\n Longitud %i\n Altitud %i\n",longitud,latitud,altitud);
+	 fclose(archivo);*/
+	 
+	 printf("Fin de rutina.\n");
+	 //RM tiempo(2bytes) profundidad en mm (2 bytes) checksum
+	 checksum = COM_START_BYTE+PPZ_MEASURE_BYTE+tiempo+profundidad;
+	 itoh(tiempo, hex_tiempo, 2);
+	 itoh(profundidad, hex_profundidad, 2);
+	 itoh(checksum, hex_checksum, 2);
+	 serialPutchar(fd,COM_START_BYTE);
+	 serialPutchar(fd,COM_FINAL_BYTE);
+	 serialPutchar(fd,hex_tiempo[0]);
+	 serialPutchar(fd,hex_tiempo[1]);
+	 serialPutchar(fd,hex_profundidad[0]);
+	 serialPutchar(fd,hex_profundidad[1]);
+	 serialPutchar(fd,hex_checksum[0]);
+	 serialPutchar(fd,hex_checksum[1]);
+	 
+	 
+	 en=0; //Se desactiva el enable
  }
  
  int main(){
@@ -575,16 +811,41 @@ float p_d;
 	 
 	 t=time(NULL);
 	 tm=localtime(&t);
-	 //se crea el nombre del archivo de telemetria según fecha y hora
+	 
+	 //CREAR ARCHIVOS DE DATOS
+	 
+	 //TELEMETRIA
+	 //se crea el nombre del archivo según fecha y hora
 	 strftime(name_telemetria,100,"Telemetria-%X-%d-%m-%y.txt",tm); 
 	 
-	 telemetria = fopen(name_telemetria,"w+"); //se abre el archivo escribir GPS
+	 telemetria = fopen(name_telemetria,"w+"); //se crea el archivo de telemetria
 	 while(telemetria==NULL){ //Por si hubiera ocurrido un error creando el archivo
 		 telemetria = fopen(name_telemetria,"w+"); //se crea el archivo de telemetria
 	 }
 	 fprintf(telemetria, "TIME MENSAJE LATITUD LONGITUD ALTITUD PROFUNDIDAD CONFIANZA\n");
 	 fclose(telemetria);
 	 
+	 //LOG ERRORES
+	 strftime(name_telemetria,100,"log-errores-%X-%d-%m-%y.txt",tm); 
+	 
+	 log_errores = fopen(name_log,"w+"); //se crea el archivo de telemetria
+	 while(log_errores==NULL){ //Por si hubiera ocurrido un error creando el archivo
+		 log_errores = fopen(name_log,"w+"); //se crea el archivo de telemetria
+	 }
+	 fprintf(log_errores, "TIME MENSAJE\n");
+	 fclose(log_errores);
+	 
+	 //PUNTOS EN LOS QUE SE HA MEDIDO
+	 strftime(name_puntos_medida,100,"lorg-errores-%X-%d-%m-%y.txt",tm); 
+	 
+	 puntos_medida = fopen(name_puntos_medida,"w+"); //se crea el archivo de telemetria
+	 while(puntos_medida==NULL){ //Por si hubiera ocurrido un error creando el archivo
+		 puntos_medida = fopen(name_puntos_medida,"w+"); //se crea el archivo de telemetria
+	 }
+	 fprintf(puntos_medida, "TIME MENSAJE LATITUD LONGITUD ALTITUD PROFUNDIDAD CONFIANZA\n");
+	 fclose(puntos_medida);
+	 
+	 //ARRANQUE HILOS
 	 piThreadCreate(contador_vueltas);
 	 piThreadCreate(contador_t);
 	 piThreadCreate(comunicacion_ppzz);
@@ -596,7 +857,7 @@ float p_d;
 	 for(;;){
 		 //printf("%i\n", en);
 		 if(en==1){
-			 rutina(d_sonar,0);
+			 rutina(d_sonar,intervalo);
 		 }
 		 if(en==0){
 			 //printf("Esperando disparo\n");
