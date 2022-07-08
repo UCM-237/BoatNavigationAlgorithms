@@ -33,7 +33,7 @@ def dibuja_trayectoria(theta, color):
     ke = 0.8
     kd = 10           
 
-    tfin = 50 #tiempo final del experimento
+    tfin = 20 #tiempo final del experimento
     t = 0. #tiempo actual
     dt = 0.001 #incremento de tiempos para integración
 
@@ -99,8 +99,8 @@ def dibuja_trayectoria(theta, color):
         #de momento solo controlamos rumbo y dejamos la v fija como partimos del
         #reposo deberíamos dejar que coja velocidad antes de lanzar el algoritmo..
 
-        e,n,H = gvf.elipse(a, b, alpha, p, p0)
-        #e,n,H = gvf.circulo(p,p0,2)
+        #e,n,H = gvf.elipse(a, b, alpha, p, p0)
+        e,n,H = gvf.circulo(p,p0,r)
         m = R[:,1].reshape(2,1)
         Tau,ghi,dot_pdhat, dot_Xd = gvf.gvf_control_boat_2(p, v, e, n, H, ke, kd, 1, m,mua,10,100,F,R)
         #print(Tau)
@@ -148,16 +148,16 @@ def dibuja_trayectoria(theta, color):
     # Dibujo la trayectoria deseada y la real
     pl.figure(1)
     num_puntos=100
-    x = np.linspace(-b,b, num_puntos)
-    # dibuja el circulo con lineas cortas
-    pl.plot(x, fe(x,a,b,p0), color="red", markersize=1)
-    # dibuja los puntos x,y calculados
-    pl.plot(x, -fe(x,a,b,p0), color="red", markersize=1)
-    pl.plot(p_x,p_y,'k-')
+#     x = np.linspace(a-r,a+r, num_puntos)
+#     # dibuja el circulo con lineas cortas
+#     pl.plot(x, f(x,a,b,r), color="red", markersize=1)
+#     # dibuja los puntos x,y calculados
+#     pl.plot(x, -fe(x,a,b,r), color="red", markersize=1)
+    pl.plot(p_x,p_y,color)
     print(color)
     for i in range(np.size(p_x)):
-        if i%100 == 0:
-            pl.arrow(p_x[i],p_y[i],fx[i],fy[i], color = color, shape = "full") #NED
+        if i%300 == 0:
+            pl.arrow(p_x[i],p_y[i],fx[i],fy[i], color = color, shape = "full",head_width = 0.2) #NED
     pl.legend(['Posiciones'])
 #     print(color)
 #     pl.figure(2)
@@ -185,18 +185,15 @@ def dibuja_trayectoria(theta, color):
     #pl.arrow(-p[1],p[0],v[1],v[0]) 
     return
 
-theta=0.75
-print(theta)
-dibuja_trayectoria(theta,'blue')
-theta=1.0
-print(theta)
-dibuja_trayectoria(theta,'green')
-theta=1.7
-print(theta)
-dibuja_trayectoria(theta,'orange')
-theta=2.0
-print(theta)
-dibuja_trayectoria(theta,'purple')
+thetas= np.linspace(-3.0,3.14,10)
+colores=['blue','green','orange','purple','brown','pink','gray','olive','cyan','black']
+i=0
+for theta in thetas:
+    dibuja_trayectoria(theta,colores[i])
+    print(theta)
+    print(colores[i])
+    print(i)
+    i=i+1
 pl.show()
 
  
