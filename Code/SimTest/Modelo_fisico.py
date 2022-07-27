@@ -32,7 +32,7 @@ mua = 10. #resistencia al giro
 ke = 0.8
 kd = 10           
 
-tfin = 50#tiempo final del experimento
+tfin = 200#tiempo final del experimento
 t = 0. #tiempo actual
 dt = 0.001 #incremento de tiempos para integración
 
@@ -53,6 +53,7 @@ R = -np.eye(2)
 theta = 1.2
 R = np.cos(theta)*R
 print(R)
+
 #ojo que esta E, es la traspuesta de la de Héctor
 E = np.array([[0,1],[-1,0]])
 
@@ -91,6 +92,8 @@ Ti_array=np.array([F/2])
 e_array=np.array([0.])
 dot_Xd_array=np.array([0.])
 kd_term=np.array([0.0])
+
+d=1
 #prueba con el control de héctor para circular
 #circulo = gvfH.Path_gvf_circle(p0[0][0],p0[1][0], 2)
 while t <= tfin:
@@ -135,7 +138,11 @@ while t <= tfin:
         pathi = Path(vertrot,codes)
         patchi = patches.PathPatch(pathi,facecolor = 'blue')
         pl.gca().add_patch(patchi)
-        #pl.arrow(-p[1],p[0],v[1],v[0]) #NED
+        ix=-p[1,0]
+        iy=p[0,0]
+        fy=d*R[0][0]
+        fx=d*R[0][1]
+        pl.arrow(ix,iy,fx,fy, color = "blue", shape = "full") #NED
         pl.figure(4)
         pl.plot(t,ghi,'.b')
 #         pl.figure(5)
