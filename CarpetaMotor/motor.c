@@ -29,6 +29,7 @@ char hex_tiempo[4],hex_profundidad[2],hex_checksum[2];
 
 time_t t;
 struct tm *tm;
+int min_bajada,hora_bajada;
 char name_telemetria[100];
 char name_log[100];
 char name_puntos_medida[100];
@@ -428,6 +429,20 @@ float p_d;
 	
 	printf("Sensor en posición cero.\n"); 
 	
+	t=time(NULL);
+	tm=localtime(&t);
+	
+	char str_min_bajada[50];
+	char str_hora_bajada[50];
+	
+	//Guardo la hora de bajada de la sonda
+	strftime(str_min_bajada,50,"%M",tm);
+	strftime(str_hora_bajada,50,"%H",tm);
+	
+	min_bajada = atoi(str_min_bajada);
+	hora_bajada = atoi(str_hora_bajada);
+	
+	
 	//RM tiempo(2bytes) profundidad en mm (2 bytes) checksum 
 	checksum = COM_START_BYTE+PPZ_MEASURE_BYTE+tiempo+profundidad;
 	itoh(tiempo, hex_tiempo, 2);
@@ -733,7 +748,7 @@ float p_d;
 	 digitalWrite(in2,0);
 		 
 	 //Ping con la sonda
-	 /*int a;
+	 int a;
 	 int g=0;
 	 for(;;){
 		 a = system("ping -c 1 8.8.8.8");
@@ -761,23 +776,51 @@ float p_d;
 	 }
 
 		 
+	 
 	 //Recogida de datos
-	 system("./prueba");
+	system("./prueba");
+	 
+	char data[200];
+	int en_data = 0;
+	 
+	//Cambio de nombre al archivo de datos de la sonda, nombre archivo de datos de bajada
+	char sensor_arch_name[100];
+	char arch_name_datos_bajada[100];
+	 
+	t=time(NULL);
+	tm=localtime(&t);
+	strftime(sensor_arch_name,100,"Sensor-%X-%d-%m-%y.txt",tm); //se crea el nombre del archivo según fecha y hora
+	strftime(arch_name_datos_bajada,100,"datos-bajada-%X-%d-%m-%y.txt",tm); //se crea el nombre del archivo según fecha y hora
+	 
+	//Leo los datos de la sonda y me guardo los datos que me interesan
+	FILE *archivo_sonda = fopen("sensordata.txt","r"); //se abre el archivo para leer los datos
+	FILE *archivo_datos_bajada = fopen(arch_name_datos_bajada,"w+"); //se crea el archivo para guardar los datos de la bajada
+	
+	fprintf(archivo_datos_bajada,"Date (ISO8601),System_Depth (m),Blue (µg/L),DO (mg/L),DO_SAT (%),pH_Value (pH),Temp (Cº)\n");
+	
+	while(!feof(archivo_sonda)){
+		
+		int year,month,day,hora,min,seg,data1,data2,data3,data4,data5,data6;
+		
+		fgets(data,200, archivo_sonda);
+		
+		sscanf(data,"%d-%d-%dT%d:%d:%d+0100,%d,%d,%d,%d,%d,%d\n",&year,&month,&day,&hora,&min,&seg,&data1,&data2,&data3,&data4,&data5,&data6);
+		if(hora>=hora_bajada && min>=min_bajada||en_data==1){
+			en_data=1;
+			fprintf(archivo_datos_bajada,"%s\n",data);
+		}
+			
+	}
+	
+	fprintf(archivo_datos_bajada, "\n \n Coord. GPS:\n Latitud %i\n Longitud %i\n Altitud %i\n",longitud,latitud,altitud); //añadir GPS
+	
+	fclose(archivo_sonda);
+	fclose(archivo_datos_bajada);
 	 
 	 
-	 //Cambio de nombre al archivo de datos y añadir GPS
-	 char sensor_arch_name[100];
+	//se cambia al nombre creado para saber cuando se guardó por última vez los datos de la sonda
+	rename("sensordata.txt", sensor_arch_name); 
 	 
-	 t=time(NULL);
-	 tm=localtime(&t);
-	 strftime(sensor_arch_name,100,"Sensor-%X-%d-%m-%y.txt",tm); //se crea el nombre del archivo según fecha y hora
-	 
-	 rename("sensordata.txt", sensor_arch_name); //se cambia al nombre creado
-	 
-	 
-	 FILE *archivo = fopen(sensor_arch_name,"a+"); //se abre el archivo para añadir GPS al sensor
-	 fprintf(archivo, "Coord. GPS:\n  Latitud &i\n Longitud %i\n Altitud %i\n",longitud,latitud,altitud);
-	 fclose(archivo);*/
 	 
 	 printf("Fin de rutina.\n");
 	 //RM tiempo(2bytes) profundidad en mm (2 bytes) checksum

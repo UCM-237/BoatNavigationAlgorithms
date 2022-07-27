@@ -39,7 +39,7 @@ int main(){
         
         //nombre += hh;
         
-        sonda1.DataCsv("prueba2","22","04","07");
+        sonda1.DataCsv("prueba2",aa,mm,dd);
         cout<<"datosGuardados"<<endl;
         //while(true){
 
