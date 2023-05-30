@@ -2,29 +2,24 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy as scp
 
-from gvf_param_boat import u_ctrl
+from gvf_param_boat import gvf_speed_control
 from gvf_param_boat import vector_field
 from boat_model import boat_model
-
+from matplotlib.path import Path
+import matplotlib.patches as patches
+ 
 # Por si se quiere guardar la animaciñno
-animate = 1;
+animate = 0;
 
 # Max simulation time (sec)
-Time_max = 2300; 
+Time_max = 260; 
 
 
 # Para seguir splines
-t = [0, 10, 20, 30, 40,  60,  80,  100, 120, 140, 160, 180, 200, 220, 240, 260]
+t = np.array([0, 10, 20, 30, 40,  60,  80,  100, 120, 140, 160, 180, 200, 220, 240, 260])
 x = np.array([-10, 13, 4, 22, 50, 27,  2,    1,   -10, -30, -20, -10, -20, -30, -20, -10])
 y = np.array([5,  -10, 8,  20, 12, 0.2, 40,   20, 15, 2, -15, 40, 50, 50, 30, 50])
 x[6:] += -20;
-
-#t = np.array([0, 10, 20, 30, 40, 50, 60, 70, 80])
-#x = np.array([1, 10, 20, 30, 40, 50, 60, 70, 80])
-#y = np.array([2,  2,  2,  2,  2,  2,  2,  2, 2])
-#y = x
-x = x*10; y = y*10; t = np.array(t)*10
-
 
 
 sx = scp.interpolate.CubicSpline(t,x,bc_type="natural")
@@ -35,79 +30,99 @@ plt.close('all')
 
 
 
-# Posición inicial
-pos0 = np.array([x[0]+90,y[0]-30])
+# Initial position
+pos0 = np.array([x[0]-10,y[0]])
 
 
-# Condiciones inciales
+# Initial conditions
 #x0 = [vx,vy,rx,ry,omega,R00,R01,R10,R11,w]
-x0 = np.array([1, 1, pos0[0], pos0[1], 0, 1, 0, 0, 1,t[0]])
+phi_orig = np.pi/6;
+R = np.array([[np.cos(phi_orig), -np.sin(phi_orig)],
+              [np.sin(phi_orig),np.cos(phi_orig)]])
 
-# Tiempo muestreo
-Ts = 0.1;
+x0 = np.array([1, 1, pos0[0], pos0[1], 0, R[0,0], R[0,1], R[1,0], R[1,1], t[0]])
+
+# Sample time
+Ts = 0.05;
 
 # Max iterations
 Niter_max = Time_max/Ts
 k = 0;
 cnt_iter = 0
 
-# Igual que el siguiente pero 1 por cada Ts
-ppx = []
-ppy = []
+# In order to show the complete trajectory in each sample time
+ppx = []; ppy = []
 
-# Para luego representar trayectoria y campos vectoriales
-pxtotal = []
-pytotal = []
+# In order to show the complete trajectory evaluated with the integrator
+pxtotal = []; pytotal = []
 
-# Para leuego representar velocidades 
-dpxtotal = []
-dpytotal = []
+# In order to show speeds
+dpxnorm = []; dpynorm = []
+dppx = []; dppy = []
 
-dppx = []
-dppy = []
+# In order to show vector fields
+chixTotal = []; chiyTotal = []; 
 
-# Para luego representar velocidades deseadas y guardar tiempo cada Ts
-chixTotal = []
-chiyTotal = []
+# Save complete time vector
 tt        = []
 
-# Para ver si converge
-phi1total = []
-phi2total = []
+# In order to show distance errors
+phixtotal = []; phiytotal = []
 
-# Para guardar la ley de control u
-uu        = []
-ww        = []
-VV        = []
-dtheta    = []
-omegaomega = []
-TTp       = []
-TTs       = []
+# In order to show angular control action uu, 
+# Force control action ff,
+# extended dynamics ww,
+# Lyapunov function VV,
+# vector field rotation rate dtheta,
+# boats angular speed omegaomega
+tautau = []; ff = []; ww = []; 
+VV = []; dtheta = []; omegaomega = []
+
+# Thrusters
+TTp       = []; TTs       = []
+
+# Orientation error
 orierr    = []
-##### constantes de la ley de control
 
-## Si hay disturbances subir la k1 y k2....
-# Como hay rozamientos hay que subir las k1 k2
-k1 = 1.8; k2 = 1.8; ktau = 12
 
-## parametros del modelo
-f     = 10
+# Vertices to draw the boat
+factor = 0.6 # factor escalado para pintar barco
+vertices = np.array([[0, 0.25],[0,-0.25],[1,0],[0,0.25]])*factor
+orig_vertices = (R @ vertices.T).T 
+vertices = orig_vertices + np.array([pos0[0],pos0[1]])
+codes = [Path.MOVETO,Path.LINETO,Path.LINETO,Path.CLOSEPOLY]
 
-mutau = 10
-mux   = 10
-muy   = 0.3
-mu    = np.array([[mux, 0], [0, muy]])
-waterspeed = np.array([-0.6,0.5])
 
-ux = np.array([1,0])
+################ Controller constants #############
 
-plt.figure(figsize=(9,7))
 
+"""
+ kx : Vector field agressiveness in x direction
+ ky : Vector field agressiveness in y direction
+ ktau : Torque constant
+ kf   : Force constant
+"""
+kx = 1.5; ky = 1.5; ktau = 30; kf = 1.1211
+
+# Model parameters
+f     = 0    # Initial force
+
+mutau = 10    # Angular drag coef
+mux   = 10    # Drag coef in x direction
+muy   = 0.7   # Drag coef in y direction
+mu    = np.array([[mux, 0], [0, muy]]) # Drag coef matrix
+waterspeed = np.array([-0.1,0.1])*0    # Water speed (constant)
+
+ux = np.array([1,0])                   # Unitary (body) [1 0] vector
+
+
+
+
+# Simulation Loop
 while((k < Niter_max)):
 
     
-    
-    # Posiciones actuales, angulo actual, w actual
+    ###### Get states
     #speed
     dpx     = x0[0]
     dpy     = x0[1]
@@ -115,80 +130,93 @@ while((k < Niter_max)):
     #pos
     px     = x0[2]
     py     = x0[3]
-    #r      = np.array([rx,ry])
-    #ang speed
+    #angular speed
     omega  = x0[4]
-    
-    # Elements of Rot Matrix
+    #Rotation matrix
     R00 = x0[5]
     R01 = x0[6]
     R10 = x0[7]
     R11 = x0[8]
     R = np.array([[R00,R01],[R10,R11]])
-    
-    # augmented dynamics
+    #augmented dynamics
     w   = x0[9]
-    
+        
+    """ Append section: """
+    ###### get vertices
+    newvertices = (R @ orig_vertices.T).T
+    vertices = np.column_stack([vertices, newvertices + np.array([px,py])])
+
+    ###### Add position, omega and w 
     ppx = np.append(ppx, px); ppy = np.append(ppy, py)
     omegaomega = np.append(omegaomega,omega)
     ww = np.append(ww,w)
-    
-    # Velocidades axtuales
-    
-    # Guardamos las velocidades normalizadas para compararlas con la deseada
-    dpxtotal = np.append(dpxtotal, dpx/np.sqrt(dpx**2 + dpy**2)) # normalizadas
-    dpytotal = np.append(dpytotal, dpy/np.sqrt(dpx**2 + dpy**2))
-    
-    # Velocidades sin normalizar
+
+    ###### Add speeds
+    # Save normalize speeds
+    dpxnorm = np.append(dpxnorm, dpx/np.sqrt(dpx**2 + dpy**2)) 
+    dpynorm = np.append(dpynorm, dpy/np.sqrt(dpx**2 + dpy**2))
+    # Non normalize speeds
     dppx = np.append(dppx,dpx)
     dppy = np.append(dppy,dpy)
     
-    # Accelerations (not used yet)
-    dv = (R @ ux)*f - (R @ mu @ R.T @ (v-waterspeed))
-    ddp = dv;
-
-    
-    # Guardar velocidad la deseada para comparar con la actual.
-    chi,chip,phi1,phi2 = vector_field([px,py], k1, k2, sx, sy, w)
-    
+    ###### Add vector field
+    chi,chip,phix,phiy = vector_field([px,py], kx, ky, sx, sy, w)
     chin = chip/np.linalg.norm(chip)
     chixTotal = np.append(chixTotal, chin[0])
     chiyTotal = np.append(chiyTotal, chin[1])
+
+
+    ###### Accelerations
+    dv = (R @ ux)*f - (R @ mu @ R.T @ (v-waterspeed))
     
-    phi1total = np.append(phi1total, phi1)
-    phi2total = np.append(phi2total, phi2)
+    #### Add phi errors
+    phixtotal = np.append(phixtotal, phix)
+    phiytotal = np.append(phiytotal, phiy)
     
-    # Guardamos vector de tiempos
+    #### Add time 
     tt = np.append(tt, k*Ts)
+    """ end of append section """
     
     
-    # Ley de control. Le pasamos w claro
-    V,e,dth,u = u_ctrl([px,py], [dpx,dpy], dv, R00,R01,R10,R11,omega,mutau,k1, k2, ktau, sx, sy, w)
-    orierr = np.append(orierr,e) # orientation error
-    uu = np.append(uu,u)         # Control action
-    VV = np.append(VV,V)         # Lyapunov function
-    dtheta = np.append(dtheta,dth) # Desired angular speed
+    #### Angular and speed control law
+    V,e,dth,tau,f = gvf_speed_control([px,py], [dpx,dpy], dv, 
+                                    R00,R01,R10,R11,omega,mutau,
+                                    mu,kx, ky, ktau, kf, sx, sy, w,
+                                    0,0,0)
     
-    # Thrust
-    TTp  = np.append(TTp,(f+u)/2); TTs = np.append(TTs,(f-u)/2)
+    """ Append """
+    #### Add orientation error, control action, Lyapunov and desired ang speed
+    orierr = np.append(orierr,e)           # orientation error
+    tautau = np.append(tautau,tau)         # Torque control action
+    VV = np.append(VV,V)                   # Lyapunov function
+    dtheta = np.append(dtheta,dth)         # Desired angular speed
+    ff = np.append(ff,f)                   # Force control action
     
-    # Simulación
+    #### Add thrusts
+    TTp  = np.append(TTp,(f+tau)/2); TTs = np.append(TTs,(f-tau)/2)
+    """ end of append """
+    
+    """ Actual simulation """
+    #### Integrate
     results = scp.integrate.solve_ivp(boat_model, [k*Ts, (k+1)*Ts], 
                                  x0, dense_output=True,
-                                 args=(f, u, chi, mu, mutau,waterspeed),
+                                 args=(f, tau, chi, mu, mutau,waterspeed),
                                  max_step = Ts)
     
     x0 = results.y;
     
+    #### Get total position with better accuracy (from runge kutta integrator)
     pxtotal = np.append(pxtotal, results.y[2,:])
     pytotal = np.append(pytotal, results.y[3,:])
     
     x0 = x0[:,-1]
     k += 1
     
+
 ######### Plots #########
 
 ### Para mostrar trayectoria ###
+plt.figure(figsize=(9,7))
 tsp = np.linspace(0,t[-1],2000)
 plt.plot(sx(tsp), sy(tsp), color = 'orange')
 plt.plot(ppx, ppy, '--b')
@@ -200,18 +228,27 @@ plt.scatter(x,y, s=15, color='red');
 plt.legend(['Trayectoria deseada', 'trayectoria seguida', 'punto inicial', 
             'Puntos de ctrl splines'])
 
+# Para el barco 
+for k in range(1, int((vertices.shape[1])/2)-20, 10):
+    vertex = vertices[:,2*k:2*k+2]# + np.array([ppx[k+1],ppy[k+1]])
+    #plt.plot(ppx[k-1],ppy[k-1],'k.')
+    pathi  = Path(vertex,codes)
+    patchi = patches.PathPatch(pathi,facecolor = 'green')
+    plt.gca().add_patch(patchi)
+plt.gca().axis('equal')
+
 ### Comparamos la velocidad actual en cada Ts con la deseada ###
 plt.figure(figsize=(9,7))
 
 plt.subplot(211)
-plt.plot(tt, dpxtotal)
+plt.plot(tt, dpxnorm)
 plt.plot(tt, chixTotal) 
 plt.legend(['Velocidad x', 'Velocidad deseada x'])
 plt.title("Normalized speeds")
 plt.grid(True)
 
 plt.subplot(212)
-plt.plot(tt, dpytotal)
+plt.plot(tt, dpynorm)
 plt.plot(tt, chiyTotal)
 plt.legend(['Velocidad y', 'Velocidad deseada y'])
 plt.xlabel("Time (s)")
@@ -229,19 +266,20 @@ plt.legend(fontsize=22)
 plt.subplot(313)
 plt.plot(tt,np.sqrt(dppy**2+dppx**2),label=r"$||\dot{r}||$")
 plt.legend(fontsize=22)
+#plt.plot(tt,np.sqrt(sx.derivative(1)(tt)**2 + sy.derivative(1)(tt)**2),'red',
+#         label=r'$||\dot{\sigma(t)||$')
 
 #### Mostrar curvas de nivel phi_i = 0
 plt.figure(figsize=(9,7))
-
 plt.subplot(121)
-plt.plot(tt, phi1total)
-plt.title("$\phi_1$ (m)");
+plt.plot(tt, phixtotal)
+plt.title(r"Distance error $\phi_x$ (m)");
 plt.xlabel("Time (s)")
 plt.grid(True)
 
 plt.subplot(122)
-plt.plot(tt,phi2total)
-plt.title("$\phi_2$ (m)");
+plt.plot(tt,phiytotal)
+plt.title(r"Distance error $\phi_y$ (m)");
 plt.xlabel("Time (s)")
 plt.grid(True)
 
@@ -261,13 +299,16 @@ ax.grid(True); ax.set_title(r"$(s_x(t),s_y(t),s_w(t))$")
 
 # Plot ctrl actions
 plt.figure(figsize=(9,7))
-plt.subplot(211)
+plt.subplot(311)
+plt.title("Control actions")
 plt.plot(tt,TTp, label='$T_p$')
 plt.plot(tt,TTs, label='$T_s$')
 plt.legend(fontsize=22); plt.grid(True)
-plt.subplot(212)
-plt.plot(tt,uu, label=r'$\tau$')
-plt.title("Control actions")
+plt.subplot(312)
+plt.plot(tt,ff, label=r'$f$')
+plt.legend(fontsize=22); plt.grid(True)
+plt.subplot(313)
+plt.plot(tt,tautau, label=r'$\tau$')
 plt.xlabel("Time (s)")
 plt.grid(True)
 plt.legend(fontsize=22); plt.grid(True)
@@ -278,7 +319,8 @@ plt.subplot(311)
 plt.plot(tt,VV, label="Lyapunov function")
 plt.legend(fontsize=22); plt.grid(True)
 plt.subplot(312)
-plt.plot(tt,omegaomega-dtheta, label=r"$\omega-\dot{\Theta}_d$")
+#plt.plot(tt,omegaomega-dtheta, label=r"$\omega-\dot{\Theta}_d$")
+plt.plot(tt,dtheta, label=r"$\omega-\dot{\Theta}_d$")
 plt.legend(fontsize=22); plt.grid(True)
 plt.subplot(313)
 plt.plot(tt,orierr/2,label=r"$(1-\hat{{\chi}^p}^TRu_x)$")
@@ -315,22 +357,22 @@ if(animate):
         tsp = np.linspace(0,t[-1],1000)
         ax.plot(sx(tsp), sy(tsp), 'k', label='s(t) deseada')
         ax.plot(pxtotal, pytotal, '--b', label='s(t) seguida')
-        ax.plot(ppx[100*(time)],ppy[100*(time)], 'ro', label='Boat')
+        ax.plot(ppx[10*(time)],ppy[10*(time)], 'ro', label='Boat')
         
-        px = np.linspace(np.min(pxtotal)-400, np.max(pxtotal)+400, 25)
-        py = np.linspace(np.min(pytotal)-400, np.max(pytotal)+400, 25)
+        px = np.linspace(np.min(pxtotal)-40, np.max(pxtotal)+40, 25)
+        py = np.linspace(np.min(pytotal)-40, np.max(pytotal)+40, 25)
     
         [Px,Py] = np.meshgrid(px,py)
         pdx = np.zeros(Px.shape)
         pdy = np.zeros(Py.shape)
     
-        #vector_field([px,py], k1, k2, sx, sy, w)
+        #vector_field([px,py], kx, ky, sx, sy, w)
     
         for k in range(len(px)):
             for u in range(len(px)):
-                chi,chip,phi1,phi2 = vector_field([Px[k,u], Py[k,u]], k1, k2,
+                chi,chip,phix,phiy = vector_field([Px[k,u], Py[k,u]], kx, ky,
                                                   sx, sy, 
-                                                  ww[100*(time)])
+                                                  ww[10*(time)])
                 #pd = pd/np.linalg.norm(pd)  # Normalizamos just in case
                 pdx[k,u] = chi[0]
                 pdy[k,u] = chi[1]
@@ -338,8 +380,8 @@ if(animate):
         ax.quiver(Px, Py, pdx, pdy, color='red',label='Vector Field')
             
         # También plotear velocidad en cada instante (con el puntito)
-        ax.quiver(ppx[100*time], ppy[100*time], 
-                   dpxtotal[100*time], dpytotal[100*time] ,color='black',
+        ax.quiver(ppx[10*time], ppy[10*time], 
+                   dpxnorm[10*time], dpynorm[10*time] ,color='black',
                    label='Speed')
         
         ### Show initial point and splines control points ###
@@ -349,6 +391,6 @@ if(animate):
         
         ax.legend()
     
-    anim = FuncAnimation(fig, animate_uav, frames=int(len(ppx)/100 - 2), interval=1, repeat=False)
+    anim = FuncAnimation(fig, animate_uav, frames=int(len(ppx)/10 - 2), interval=1, repeat=False)
     anim.save('BOAT.gif')
     
