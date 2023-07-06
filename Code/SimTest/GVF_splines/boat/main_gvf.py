@@ -8,11 +8,11 @@ from boat_model import boat_model
 from matplotlib.path import Path
 import matplotlib.patches as patches
  
-# Por si se quiere guardar la animaciñno
+# Por si se quiere guardar la animacion
 animate = 0;
 
 # Max simulation time (sec)
-Time_max = 260; 
+Time_max = 290; 
 
 
 # Para seguir splines
@@ -102,7 +102,7 @@ codes = [Path.MOVETO,Path.LINETO,Path.LINETO,Path.CLOSEPOLY]
  ktau : Torque constant
  kf   : Force constant
 """
-kx = 1.5; ky = 1.5; ktau = 30; kf = 1.1211
+kx = 0.5; ky = 0.5; ktau = 10; kf = 1.1211
 
 # Model parameters
 f     = 0    # Initial force

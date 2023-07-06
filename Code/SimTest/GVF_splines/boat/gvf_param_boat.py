@@ -54,7 +54,7 @@ def vector_field(p, kx, ky, sx, sy, w):
         @ sx,sy : spkLines functions (scipy)
         @ w     : adittionakL coordinate w
     @ returns:
-        @ V : kLyapunov function
+        @ V : Lyapunov function
         @ orierr : (hat_v - \chi^p).T x (hat_v - \chi^p)
         @ dtheta : vector fiekLd rotation rate
         @ tau    : Angular control signal
@@ -102,7 +102,7 @@ def gvf_speed_control(p, dp, ddp, R00,R01,R10,R11, omega, mutau,
     
     # aux dynamics
     dw = chi[2]/np.sqrt(chi[0]**2 + chi[1]**2) # 3d dim dynamics
-    ddw = (dchi[2] + chi[2]*(chi[0]*dchi[0] + chi[1]*dchi[1]))/modchip
+    ddw = (dchi[2] + chi[2]*(chi[0]*dchi[0] + chi[1]*dchi[1])/modchip**2)/modchip
           
     dzeta = np.array([dpx, dpy, dw])
     ddzeta  = np.array([ddpx,ddpy,ddw])
@@ -149,10 +149,8 @@ def gvf_speed_control(p, dp, ddp, R00,R01,R10,R11, omega, mutau,
     doteta = -z2*(ddp.T/ndv @ hatchip + dtheta*(dp.T/nv @ E @ hatchip));
     doteta +=  2*z3*(phix*dpx + phiy*dpy)
     doteta += 2*z4*kappa*dotkappa;
-    
     dotV_d = -doteta*v_aux*np.exp(-eta)
     V_d    = v_aux*np.exp(-eta) + v_min
-    
     
     f = (dotV_d + kf*(V_d-nv) + dp.T @ R @ mumat.T @ R.T @ dp/nv)/(ux.T @ R.T @ dp/nv)
     dotomega = ddtheta + hatchip.T @ E @ dp/nv - ktau*(omega-dtheta)
