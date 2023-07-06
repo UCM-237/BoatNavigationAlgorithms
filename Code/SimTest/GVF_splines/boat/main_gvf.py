@@ -12,7 +12,7 @@ import matplotlib.patches as patches
 animate = 0;
 
 # Max simulation time (sec)
-Time_max = 290; 
+Time_max = 390; 
 
 
 # Para seguir splines
@@ -102,7 +102,7 @@ codes = [Path.MOVETO,Path.LINETO,Path.LINETO,Path.CLOSEPOLY]
  ktau : Torque constant
  kf   : Force constant
 """
-kx = 0.5; ky = 0.5; ktau = 10; kf = 1.1211
+kx = 0.5; ky = 0.5; ktau = 15; kf = 1.1211
 
 # Model parameters
 f     = 0    # Initial force
@@ -119,7 +119,8 @@ ux = np.array([1,0])                   # Unitary (body) [1 0] vector
 
 
 # Simulation Loop
-while((k < Niter_max)):
+w = t[0]
+while((k < Niter_max) and (w <= t[-1])):
 
     
     ###### Get states

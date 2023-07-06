@@ -111,10 +111,10 @@ def gvf_speed_control(p, dp, ddp, R00,R01,R10,R11, omega, mutau,
     dtheta = -(hatchip.T @ E @ J @ dzeta)/modchip
     
     # auxiliary variables
-    dhatchip = -dtheta*(E @ chip)
-    dinvmodchip = (chip.T @ dchip)/modchip
+    dhatchip = dtheta*(E @ chip)
+    dinvmodchip = (chip.T @ dchip)/modchip**3
     
-    a = (dhatchip.T/modchip + dinvmodchip*hatchip.T) @ E @ J @ dzeta
+    a = (dhatchip.T/modchip - dinvmodchip*hatchip.T) @ E @ J @ dzeta
     b = (hatchip.T @ E @ J @ ddzeta)/modchip
     ddtheta = -(a+b)
     
