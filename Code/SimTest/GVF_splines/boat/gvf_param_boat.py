@@ -116,7 +116,7 @@ def gvf_speed_control(p, dp, ddp, R00,R01,R10,R11, omega, mutau,
     
     a = (dhatchip.T/modchip - dinvmodchip*hatchip.T) @ E @ J @ dzeta
     b = (hatchip.T @ E @ J @ ddzeta)/modchip
-    ddtheta = -(a+b)
+    ddtheta = (a+b)
     
     ###### Guidance controller ########
     # Old lyapunov function (depends on orientation)
