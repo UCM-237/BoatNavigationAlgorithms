@@ -102,7 +102,7 @@ def gvf_speed_control(p, dp, ddp, R00,R01,R10,R11, omega, mutau,
     
     # aux dynamics
     dw = chi[2]/np.sqrt(chi[0]**2 + chi[1]**2) # 3d dim dynamics
-    ddw = (dchi[2] + chi[2]*(chi[0]*dchi[0] + chi[1]*dchi[1])/modchip**2)/modchip
+    ddw = (dchi[2] - chi[2]*(chi[0]*dchi[0] + chi[1]*dchi[1])/modchip**2)/modchip
           
     dzeta = np.array([dpx, dpy, dw])
     ddzeta  = np.array([ddpx,ddpy,ddw])
